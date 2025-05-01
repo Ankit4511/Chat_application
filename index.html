@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Chat App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+        }
+        #login, #chat {
+            display: none;
+            height: 100vh;
+            padding: 20px;
+        }
+        #login {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #chat {
+            display: flex;
+            flex-direction: row;
+        }
+        #rooms {
+            width: 200px;
+            background: #333;
+            color: #fff;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #rooms ul {
+            list-style: none;
+            padding: 0;
+        }
+        #rooms li {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #444;
+        }
+        #chatroom {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #fff;
+        }
+        #new-message {
+            display: flex;
+        }
+        #new-message input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+        }
+        #new-message button {
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login">
+    <div>
+        <h2>Enter Username</h2>
+        <input type="text" id="username" placeholder="Username">
+        <button onclick="login()">Join Chat</button>
+    </div>
+</div>
+
+<div id="chat">
+    <div id="rooms">
+        <h3>Rooms</h3>
+        <ul id="room-list"></ul>
+        <input type="text" id="new-room-name" placeholder="New room">
+        <button onclick="createRoom()">Create Room</button>
+    </div>
+    <div id="chatroom">
+        <h3 id="current-room">Select a Room</h3>
+        <div id="messages"></div>
+        <div id="new-message">
+            <input type="text" id="message" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const socket = new WebSocket("ws://localhost:3000");
+
+    let currentRoom = null;
+    let username = null;
+
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === "message" && data.room === currentRoom) {
+            displayMessage(data.username, data.message, data.timestamp);
+        } else if (data.type === "roomList") {
+            updateRoomList(data.rooms);
+        }
+    };
+
+    function login() {
+        const input = document.getElementById("username");
+        username = input.value.trim();
+        if (!username) return alert("Enter a username");
+
+        document.getElementById("login").style.display = "none";
+        document.getElementById("chat").style.display = "flex";
+
+        socket.send(JSON.stringify({ type: "login", username }));
+        socket.send(JSON.stringify({ type: "getRooms" }));
+    }
+
+    function createRoom() {
+        const roomName = document.getElementById("new-room-name").value.trim();
+        if (!roomName) return alert("Enter room name");
+        socket.send(JSON.stringify({ type: "createRoom", room: roomName }));
+    }
+
+    function updateRoomList(rooms) {
+        const list = document.getElementById("room-list");
+        list.innerHTML = "";
+        rooms.forEach(room => {
+            const li = document.createElement("li");
+            li.textContent = room;
+            li.onclick = () => joinRoom(room);
+            list.appendChild(li);
+        });
+    }
+
+    function joinRoom(room) {
+        currentRoom = room;
+        document.getElementById("current-room").textContent = `Room: ${room}`;
+        document.getElementById("messages").innerHTML = "";
+        socket.send(JSON.stringify({ type: "joinRoom", room }));
+    }
+
+    function sendMessage() {
+        const input = document.getElementById("message");
+        const message = input.value.trim();
+        if (!message || !currentRoom) return;
+        const timestamp = new Date().toLocaleTimeString();
+        socket.send(JSON.stringify({
+            type: "message",
+            room: currentRoom,
+            username,
+            message,
+            timestamp
+        }));
+        input.value = "";
+    }
+
+    function displayMessage(sender, msg, timestamp) {
+        const msgArea = document.getElementById("messages");
+        const msgDiv = document.createElement("div");
+        msgDiv.innerHTML = `<strong>${sender}</strong> <small>[${timestamp}]</small>: ${formatMessage(msg)}`;
+        msgArea.appendChild(msgDiv);
+        msgArea.scrollTop = msgArea.scrollHeight;
+    }
+
+    function formatMessage(text) {
+        return text.replace(/\*(.*?)\*/g, '<b>$1</b>')
+                   .replace(/_(.*?)_/g, '<i>$1</i>')
+                   .replace(/https?:\/\/\S+/g, url => `<a href="${url}" target="_blank">${url}</a>`);
+    }
+</script>
+</body>
+</html>
